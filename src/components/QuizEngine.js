@@ -12,8 +12,9 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
   const [quizCompleted, setQuizCompleted] = useState(false);
   const [questionStartTime, setQuestionStartTime] = useState(Date.now());
   const [answerTimes, setAnswerTimes] = useState([]);
-  const [isProgressing, setIsProgressing] = useState(false);
-  const [autoProgressTimeout, setAutoProgressTimeout] = useState(null);  useEffect(() => {
+  const [autoProgressTimeout, setAutoProgressTimeout] = useState(null);
+
+  useEffect(() => {
     // Load questions based on player data
     const quizQuestions = getQuestions(playerData.category, playerData.difficulty, 10);
     setQuestions(quizQuestions);
@@ -47,12 +48,9 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
       answers: finalAnswers
     };
 
-    onQuizComplete(quizResult);
-  }, [playerData, questions.length, onQuizComplete, answers, answerTimes]);  // Define goTo NextQuestion 
+    onQuizComplete(quizResult);  }, [playerData, questions.length, onQuizComplete, answers, answerTimes]);
+
   const goToNextQuestion = useCallback((updatedAnswers = answers, updatedAnswerTimes = answerTimes) => {
-    if (isProgressing) return; 
-    setIsProgressing(true);
-    
     if (autoProgressTimeout) {
       clearTimeout(autoProgressTimeout);
       setAutoProgressTimeout(null);
@@ -64,14 +62,10 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
       setShowResult(false);
       setTimeLeft(15);
       setQuestionStartTime(Date.now());
-      setTimeout(() => setIsProgressing(false), 100); 
     } else {
       completeQuiz(updatedAnswers, updatedAnswerTimes);
     }
-  }, [currentQuestionIndex, questions.length, completeQuiz, answers, answerTimes, isProgressing, autoProgressTimeout]);
-  const handleTimeout = useCallback(() => {
-    if (isProgressing) return;
-    
+  }, [currentQuestionIndex, questions.length, completeQuiz, answers, answerTimes, autoProgressTimeout]);  const handleTimeout = useCallback(() => {
     const timeTaken = (Date.now() - questionStartTime) / 1000;
     const newAnswers = [...answers, { questionId: questions[currentQuestionIndex].id, answer: null, correct: false }];
     const newAnswerTimes = [...answerTimes, timeTaken];
@@ -85,7 +79,7 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
       goToNextQuestion(newAnswers, newAnswerTimes);
     }, 2000);
     setAutoProgressTimeout(timeoutId);
-  }, [answers, answerTimes, currentQuestionIndex, questions, questionStartTime, goToNextQuestion, isProgressing]);
+  }, [answers, answerTimes, currentQuestionIndex, questions, questionStartTime, goToNextQuestion]);
   useEffect(() => {
     if (quizCompleted || timeLeft === 0 || selectedAnswer !== null) return;
 
@@ -99,9 +93,10 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
       });
     }, 1000);
 
-    return () => clearInterval(timer);
-  }, [timeLeft, quizCompleted, handleTimeout, selectedAnswer]);const handleAnswerSelect = (answerIndex) => {
-    if (selectedAnswer !== null || isProgressing) return;
+    return () => clearInterval(timer);  }, [timeLeft, quizCompleted, handleTimeout, selectedAnswer]);
+
+  const handleAnswerSelect = (answerIndex) => {
+    if (selectedAnswer !== null) return;
 
     // Clear any existing timeout
     if (autoProgressTimeout) {
@@ -132,15 +127,8 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
     setAutoProgressTimeout(timeoutId);
   };
 
-  const handleManualNext = () => {
-    // Clear any pending auto progression
-    if (autoProgressTimeout) {
-      clearTimeout(autoProgressTimeout);
-      setAutoProgressTimeout(null);
-    }
-    goToNextQuestion();
-  };  const goToPreviousQuestion = () => {
-    if (currentQuestionIndex > 0 && !showResult && !isProgressing) {
+  const goToPreviousQuestion = () => {
+    if (currentQuestionIndex > 0 && !showResult) {
       // Clear any pending timeout
       if (autoProgressTimeout) {
         clearTimeout(autoProgressTimeout);
@@ -240,15 +228,7 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
           Previous
         </button>
 
-        <span className="spacer"></span>        {currentQuestionIndex < questions.length - 1 && (
-          <button
-            className="btn btn-primary"
-            onClick={handleManualNext}
-            disabled={!showResult || isProgressing}
-          >
-            Next Question
-          </button>
-        )}
+        <span className="spacer"></span>
       </div>
     </div>
   );
