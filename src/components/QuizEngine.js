@@ -12,13 +12,22 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
   const [quizCompleted, setQuizCompleted] = useState(false);
   const [questionStartTime, setQuestionStartTime] = useState(Date.now());
   const [answerTimes, setAnswerTimes] = useState([]);
-
-  useEffect(() => {
+  const [isProgressing, setIsProgressing] = useState(false);
+  const [autoProgressTimeout, setAutoProgressTimeout] = useState(null);  useEffect(() => {
     // Load questions based on player data
     const quizQuestions = getQuestions(playerData.category, playerData.difficulty, 10);
     setQuestions(quizQuestions);
     setQuestionStartTime(Date.now());
   }, [playerData]);
+
+  // Cleanup effect for timeouts
+  useEffect(() => {
+    return () => {
+      if (autoProgressTimeout) {
+        clearTimeout(autoProgressTimeout);
+      }
+    };
+  }, [autoProgressTimeout]);
 
   // Define completeQuiz first
   const completeQuiz = useCallback((finalAnswers = answers, finalAnswerTimes = answerTimes) => {
@@ -39,23 +48,30 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
     };
 
     onQuizComplete(quizResult);
-  }, [playerData, questions.length, onQuizComplete, answers, answerTimes]);
-
-  // Define goToNextQuestion second
+  }, [playerData, questions.length, onQuizComplete, answers, answerTimes]);  // Define goTo NextQuestion 
   const goToNextQuestion = useCallback((updatedAnswers = answers, updatedAnswerTimes = answerTimes) => {
+    if (isProgressing) return; 
+    setIsProgressing(true);
+    
+    if (autoProgressTimeout) {
+      clearTimeout(autoProgressTimeout);
+      setAutoProgressTimeout(null);
+    }
+    
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
       setSelectedAnswer(null);
       setShowResult(false);
       setTimeLeft(15);
       setQuestionStartTime(Date.now());
+      setTimeout(() => setIsProgressing(false), 100); 
     } else {
       completeQuiz(updatedAnswers, updatedAnswerTimes);
     }
-  }, [currentQuestionIndex, questions.length, completeQuiz, answers, answerTimes]);
-
-  // Now handleTimeout can reference goToNextQuestion
+  }, [currentQuestionIndex, questions.length, completeQuiz, answers, answerTimes, isProgressing, autoProgressTimeout]);
   const handleTimeout = useCallback(() => {
+    if (isProgressing) return;
+    
     const timeTaken = (Date.now() - questionStartTime) / 1000;
     const newAnswers = [...answers, { questionId: questions[currentQuestionIndex].id, answer: null, correct: false }];
     const newAnswerTimes = [...answerTimes, timeTaken];
@@ -65,13 +81,13 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
     setSelectedAnswer(null);
     setShowResult(true);
 
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       goToNextQuestion(newAnswers, newAnswerTimes);
     }, 2000);
-  }, [answers, answerTimes, currentQuestionIndex, questions, questionStartTime, goToNextQuestion]);
-
+    setAutoProgressTimeout(timeoutId);
+  }, [answers, answerTimes, currentQuestionIndex, questions, questionStartTime, goToNextQuestion, isProgressing]);
   useEffect(() => {
-    if (quizCompleted || timeLeft === 0) return;
+    if (quizCompleted || timeLeft === 0 || selectedAnswer !== null) return;
 
     const timer = setInterval(() => {
       setTimeLeft(prev => {
@@ -84,10 +100,14 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, quizCompleted, handleTimeout]);
+  }, [timeLeft, quizCompleted, handleTimeout, selectedAnswer]);const handleAnswerSelect = (answerIndex) => {
+    if (selectedAnswer !== null || isProgressing) return;
 
-  const handleAnswerSelect = (answerIndex) => {
-    if (selectedAnswer !== null) return;
+    // Clear any existing timeout
+    if (autoProgressTimeout) {
+      clearTimeout(autoProgressTimeout);
+      setAutoProgressTimeout(null);
+    }
 
     const timeTaken = (Date.now() - questionStartTime) / 1000;
     const isCorrect = answerIndex === questions[currentQuestionIndex].correct;
@@ -105,19 +125,35 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
     setAnswers(newAnswers);
     setAnswerTimes(newAnswerTimes);
 
-    setTimeout(() => {
+    // Auto-progress after 2 seconds
+    const timeoutId = setTimeout(() => {
       goToNextQuestion(newAnswers, newAnswerTimes);
     }, 2000);
+    setAutoProgressTimeout(timeoutId);
   };
 
-  const goToPreviousQuestion = () => {
-    if (currentQuestionIndex > 0 && !showResult) {
+  const handleManualNext = () => {
+    // Clear any pending auto progression
+    if (autoProgressTimeout) {
+      clearTimeout(autoProgressTimeout);
+      setAutoProgressTimeout(null);
+    }
+    goToNextQuestion();
+  };  const goToPreviousQuestion = () => {
+    if (currentQuestionIndex > 0 && !showResult && !isProgressing) {
+      // Clear any pending timeout
+      if (autoProgressTimeout) {
+        clearTimeout(autoProgressTimeout);
+        setAutoProgressTimeout(null);
+      }
+      
       setCurrentQuestionIndex(prev => prev - 1);
       setTimeLeft(15);
       setQuestionStartTime(Date.now());
-      // Remove the last answer and time
-      setAnswers(prev => prev.slice(0, -1));
-      setAnswerTimes(prev => prev.slice(0, -1));
+      setSelectedAnswer(null);
+      setShowResult(false);
+      setAnswers(prev => prev.length > 0 ? prev.slice(0, -1) : prev);
+      setAnswerTimes(prev => prev.length > 0 ? prev.slice(0, -1) : prev);
     }
   };
 
@@ -204,13 +240,11 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
           Previous
         </button>
 
-        <span className="spacer"></span>
-
-        {currentQuestionIndex < questions.length - 1 && (
+        <span className="spacer"></span>        {currentQuestionIndex < questions.length - 1 && (
           <button
             className="btn btn-primary"
-            onClick={goToNextQuestion}
-            disabled={!showResult}
+            onClick={handleManualNext}
+            disabled={!showResult || isProgressing}
           >
             Next Question
           </button>
