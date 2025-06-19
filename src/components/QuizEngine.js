@@ -1,0 +1,223 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { getQuestions } from '../data/questions';
+import ScoreSummary from './ScoreSummary';
+
+const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [answers, setAnswers] = useState([]);
+  const [selectedAnswer, setSelectedAnswer] = useState(null);
+  const [showResult, setShowResult] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(15);
+  const [quizCompleted, setQuizCompleted] = useState(false);
+  const [questionStartTime, setQuestionStartTime] = useState(Date.now());
+  const [answerTimes, setAnswerTimes] = useState([]);
+
+  useEffect(() => {
+    // Load questions based on player data
+    const quizQuestions = getQuestions(playerData.category, playerData.difficulty, 10);
+    setQuestions(quizQuestions);
+    setQuestionStartTime(Date.now());
+  }, [playerData]);
+
+  // Define completeQuiz first
+  const completeQuiz = useCallback((finalAnswers = answers, finalAnswerTimes = answerTimes) => {
+    setQuizCompleted(true);
+    const score = finalAnswers.filter(answer => answer.correct).length;
+    const totalTime = finalAnswerTimes.reduce((sum, time) => sum + time, 0);
+
+    const quizResult = {
+      playerName: playerData.playerName,
+      category: playerData.category,
+      difficulty: playerData.difficulty,
+      score: score,
+      totalQuestions: questions.length,
+      totalTime: Math.round(totalTime),
+      date: new Date().toISOString(),
+      answerTimes: finalAnswerTimes,
+      answers: finalAnswers
+    };
+
+    onQuizComplete(quizResult);
+  }, [playerData, questions.length, onQuizComplete, answers, answerTimes]);
+
+  // Define goToNextQuestion second
+  const goToNextQuestion = useCallback((updatedAnswers = answers, updatedAnswerTimes = answerTimes) => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+      setSelectedAnswer(null);
+      setShowResult(false);
+      setTimeLeft(15);
+      setQuestionStartTime(Date.now());
+    } else {
+      completeQuiz(updatedAnswers, updatedAnswerTimes);
+    }
+  }, [currentQuestionIndex, questions.length, completeQuiz, answers, answerTimes]);
+
+  // Now handleTimeout can reference goToNextQuestion
+  const handleTimeout = useCallback(() => {
+    const timeTaken = (Date.now() - questionStartTime) / 1000;
+    const newAnswers = [...answers, { questionId: questions[currentQuestionIndex].id, answer: null, correct: false }];
+    const newAnswerTimes = [...answerTimes, timeTaken];
+
+    setAnswers(newAnswers);
+    setAnswerTimes(newAnswerTimes);
+    setSelectedAnswer(null);
+    setShowResult(true);
+
+    setTimeout(() => {
+      goToNextQuestion(newAnswers, newAnswerTimes);
+    }, 2000);
+  }, [answers, answerTimes, currentQuestionIndex, questions, questionStartTime, goToNextQuestion]);
+
+  useEffect(() => {
+    if (quizCompleted || timeLeft === 0) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          handleTimeout();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timeLeft, quizCompleted, handleTimeout]);
+
+  const handleAnswerSelect = (answerIndex) => {
+    if (selectedAnswer !== null) return;
+
+    const timeTaken = (Date.now() - questionStartTime) / 1000;
+    const isCorrect = answerIndex === questions[currentQuestionIndex].correct;
+
+    setSelectedAnswer(answerIndex);
+    setShowResult(true);
+
+    const newAnswers = [...answers, {
+      questionId: questions[currentQuestionIndex].id,
+      answer: answerIndex,
+      correct: isCorrect
+    }];
+    const newAnswerTimes = [...answerTimes, timeTaken];
+
+    setAnswers(newAnswers);
+    setAnswerTimes(newAnswerTimes);
+
+    setTimeout(() => {
+      goToNextQuestion(newAnswers, newAnswerTimes);
+    }, 2000);
+  };
+
+  const goToPreviousQuestion = () => {
+    if (currentQuestionIndex > 0 && !showResult) {
+      setCurrentQuestionIndex(prev => prev - 1);
+      setTimeLeft(15);
+      setQuestionStartTime(Date.now());
+      // Remove the last answer and time
+      setAnswers(prev => prev.slice(0, -1));
+      setAnswerTimes(prev => prev.slice(0, -1));
+    }
+  };
+
+  if (questions.length === 0) {
+    return (
+      <div className="card">
+        <h2>Loading Quiz...</h2>
+        <p>Preparing your {playerData.difficulty} {playerData.category} questions...</p>
+      </div>
+    );
+  }
+
+  if (quizCompleted) {
+    const score = answers.filter(answer => answer.correct).length;
+    const totalTime = answerTimes.reduce((sum, time) => sum + time, 0);
+
+    return (
+      <ScoreSummary
+        playerName={playerData.playerName}
+        score={score}
+        totalQuestions={questions.length}
+        totalTime={Math.round(totalTime)}
+        category={playerData.category}
+        difficulty={playerData.difficulty}
+        onPlayAgain={onReset}
+        answerTimes={answerTimes}
+      />
+    );
+  }
+
+  const currentQuestion = questions[currentQuestionIndex];
+  const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
+
+  return (
+    <div className="quiz-container">
+      <div className="quiz-header">
+        <div className="quiz-info">
+          <h2>Quiz: {playerData.category} ({playerData.difficulty})</h2>
+          <p>Player: {playerData.playerName}</p>
+        </div>
+        <div className="timer">
+          Time: {timeLeft}s
+        </div>
+      </div>
+
+      <div className="progress-bar">
+        <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+      </div>
+
+      <div className="question-counter">
+        Question {currentQuestionIndex + 1} of {questions.length}
+      </div>
+
+      <div className="question-card">
+        <h3 className="question-title">{currentQuestion.question}</h3>
+
+        <ul className="options-list">
+          {currentQuestion.options.map((option, index) => (
+            <li key={index} className="option-item">
+              <button
+                className={`option-button ${
+                  selectedAnswer === index ? 'selected' : ''
+                } ${
+                  showResult && index === currentQuestion.correct ? 'correct' : ''
+                } ${
+                  showResult && selectedAnswer === index && index !== currentQuestion.correct ? 'incorrect' : ''
+                }`}
+                onClick={() => handleAnswerSelect(index)}
+                disabled={selectedAnswer !== null}
+              >
+                {option}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="quiz-controls">
+        <button
+          className="btn btn-secondary"
+          onClick={goToPreviousQuestion}
+          disabled={currentQuestionIndex === 0 || showResult}
+        >
+          Previous
+        </button>
+
+        <span className="spacer"></span>
+
+        {currentQuestionIndex < questions.length - 1 && (
+          <button
+            className="btn btn-primary"
+            onClick={goToNextQuestion}
+            disabled={!showResult}
+          >
+            Next Question
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default QuizEngine;
