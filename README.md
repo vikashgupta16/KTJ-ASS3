@@ -106,7 +106,7 @@ Built for the Kshitij Web Development Workshop - Assignment 3
 
 ## 🔗 Live Demo
 
-[View Live Demo](https://yourusername.github.io/KTJ-ASS3)
+[View Live Demo](https://quizmaster-ktj.netlify.app/)
 
 ---
 
