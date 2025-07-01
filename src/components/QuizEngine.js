@@ -57,10 +57,10 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
     }
     
     if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
       setSelectedAnswer(null);
       setShowResult(false);
       setTimeLeft(15);
+      setCurrentQuestionIndex(prev => prev + 1);
       setQuestionStartTime(Date.now());
     } else {
       completeQuiz(updatedAnswers, updatedAnswerTimes);
@@ -129,17 +129,21 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
 
   const goToPreviousQuestion = () => {
     if (currentQuestionIndex > 0 && !showResult) {
-      // Clear any pending timeout
       if (autoProgressTimeout) {
         clearTimeout(autoProgressTimeout);
         setAutoProgressTimeout(null);
       }
       
-      setCurrentQuestionIndex(prev => prev - 1);
-      setTimeLeft(15);
-      setQuestionStartTime(Date.now());
+      // Reset UI state first
       setSelectedAnswer(null);
       setShowResult(false);
+      setTimeLeft(15);
+      
+      // Update question index
+      setCurrentQuestionIndex(prev => prev - 1);
+      setQuestionStartTime(Date.now());
+      
+      // Remove the last answ
       setAnswers(prev => prev.length > 0 ? prev.slice(0, -1) : prev);
       setAnswerTimes(prev => prev.length > 0 ? prev.slice(0, -1) : prev);
     }
@@ -195,27 +199,33 @@ const QuizEngine = ({ playerData, onQuizComplete, onReset }) => {
         Question {currentQuestionIndex + 1} of {questions.length}
       </div>
 
-      <div className="question-card">
+      <div className="question-card" key={currentQuestionIndex}>
         <h3 className="question-title">{currentQuestion.question}</h3>
 
         <ul className="options-list">
-          {currentQuestion.options.map((option, index) => (
-            <li key={index} className="option-item">
-              <button
-                className={`option-button ${
-                  selectedAnswer === index ? 'selected' : ''
-                } ${
-                  showResult && index === currentQuestion.correct ? 'correct' : ''
-                } ${
-                  showResult && selectedAnswer === index && index !== currentQuestion.correct ? 'incorrect' : ''
-                }`}
-                onClick={() => handleAnswerSelect(index)}
-                disabled={selectedAnswer !== null}
-              >
-                {option}
-              </button>
-            </li>
-          ))}
+          {currentQuestion.options.map((option, index) => {
+            const isSelected = selectedAnswer === index;
+            const isCorrect = showResult && index === currentQuestion.correct;
+            const isIncorrect = showResult && isSelected && index !== currentQuestion.correct;
+            
+            return (
+              <li key={index} className="option-item">
+                <button
+                  className={`option-button ${
+                    isSelected && !showResult ? 'selected' : ''
+                  } ${
+                    isCorrect ? 'correct' : ''
+                  } ${
+                    isIncorrect ? 'incorrect' : ''
+                  }`}
+                  onClick={() => handleAnswerSelect(index)}
+                  disabled={selectedAnswer !== null}
+                >
+                  {option}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </div>
 
